@@ -493,6 +493,45 @@ async def myscmd(event):
         await scmdbtn(conv, SENDER, msg)
 
 
+async def beanbtn(conv, SENDER, msg):
+    '''定义bean脚本按钮'''
+    from lib import get_data, show_data
+    try:
+        markup = [Button.inline(cntr, data=cntr) for cntr in containers]
+        markup.append(Button.inline('取消', data='cancel'))
+        markup = split_list(markup, 3)
+        msg = await client.edit_message(msg, '请选择容器：', buttons=markup)
+        date = await conv.wait_event(press_event(SENDER))
+        res = bytes.decode(date.data)
+        if res == 'cancel':
+            msg = await client.edit_message(msg, '对话已取消')
+            conv.cancel()
+            return None, None
+        else:
+            text = show_data(get_data(containers[res]))
+            #  msg = await conv.send_message(text)
+            msg = await client.edit_message(msg, text)
+            conv.cancel()
+            return None, None
+    except exceptions.TimeoutError:
+        msg = await client.edit_message(msg, '选择已超时，对话已停止')
+        return None, None
+    except Exception as e:
+        msg = await client.edit_message(
+            msg, 'something wrong,I\'m sorry\n' + str(e))
+        logger.error('something wrong,I\'m sorry\n' + str(e))
+        return None, None
+
+
+@client.on(events.NewMessage(from_users=chat_id, pattern='/bean'))
+async def mybean(event):
+    '''接收/scmd命令后执行程序'''
+    SENDER = event.sender_id
+    async with client.conversation(SENDER, timeout=60) as conv:
+        msg = await conv.send_message('正在查询，请稍后')
+        await beanbtn(conv, SENDER, msg)
+
+
 async def cmd(cmdtext):
     '''定义执行cmd命令'''
     try:
@@ -537,6 +576,7 @@ async def mystart(event):
     /scmd 执行自定义命令
     /snode 命令可以选择脚本执行，只能选择/jd/scripts目录下的脚本，选择完后直接后台运行，不影响机器人响应其他命令
     /log 选择查看执行日志
+    /bean 获取指定容器内各个帐号一周内的京东变化
     /getcookie 扫码获取cookie 期间不能进行其他交互
     此外直接发送文件，会让你选择保存到哪个文件夹，如果选择运行，将保存至scripts目录下，并立即运行脚本
     crontab.list文件会自动更新时间;其他文件会被保存到/jd/scripts文件夹下'''
