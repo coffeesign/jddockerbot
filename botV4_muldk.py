@@ -256,6 +256,31 @@ def split_list(datas, n, row: bool = True):
     return _datas
 
 
+async def cntrtn(conv, SENDER, content: str, msg):
+    '''定义选择容器按钮'''
+    try:
+        markup = [Button.inline(cntr, data=cntr) for cntr in containers]
+        markup.append(Button.inline('取消', data='cancle'))
+        markup = split_list(markup, 3)
+        msg = await client.edit_message(msg, '请选择容器：', buttons=markup)
+        date = await conv.wait_event(press_event(SENDER))
+        res = bytes.decode(date.data)
+        if res == 'cancle':
+            msg = await client.edit_message(msg, '对话已取消')
+            conv.cancel()
+            return None, None
+        else:
+            return res, msg
+    except exceptions.TimeoutError:
+        msg = await client.edit_message(msg, '选择已超时，对话已停止')
+        return None, None
+    except Exception as e:
+        msg = await client.edit_message(
+            msg, 'something wrong,I\'m sorry\n' + str(e))
+        logger.error('something wrong,I\'m sorry\n' + str(e))
+        return None, None
+
+
 async def logbtn(conv, SENDER, cntr_id: str, content: str, msg):
     '''定义log日志按钮'''
     try:
@@ -280,7 +305,9 @@ async def logbtn(conv, SENDER, cntr_id: str, content: str, msg):
             return None, None
         elif os.path.isfile(res):
             msg = await client.edit_message(msg, content + '中，请注意查收')
-            await conv.send_file(res)
+            with open(res, "r") as f:
+                await conv.send_message(f.read())
+            #await conv.send_file(res)
             msg = await client.edit_message(msg, content + res + '成功，请查收')
             conv.cancel()
             return None, None
@@ -336,18 +363,20 @@ async def mylog(event):
     '''定义日志文件操作'''
     nodereg = re.compile(r'^/log ([\S]+)')
     text = re.findall(nodereg, event.raw_text)
-    if len(text) == 0:
-        res = '''请正确使用/log命令，如
-        /log jd1 获取容器jd1的日志
-        '''
-        await client.send_message(chat_id, res)
-    elif text[0] not in containers:
-        res = f"容器{rext[0]}不在配置文件中！"
-        await client.send_message(chat_id, res)
-    else:
-        path_or_cntr = text[0]
-        SENDER = event.sender_id
-        async with client.conversation(SENDER, timeout=60) as conv:
+    SENDER = event.sender_id
+    async with client.conversation(SENDER, timeout=60) as conv:
+        if len(text) == 0:
+            msg = await conv.send_message('正在查询，请稍后')
+            path_or_cntr, msg = await cntrtn(conv, SENDER, "选择容器", msg)
+            while path_or_cntr:
+                path_or_cntr, msg = await logbtn(conv, SENDER, path_or_cntr,
+                                                 '查询日志', msg)
+        elif text[0] not in containers:
+            res = f"容器{rext[0]}不在配置文件中！"
+            await client.send_message(chat_id, res)
+            return None
+        else:
+            path_or_cntr = text[0]
             msg = await conv.send_message('正在查询，请稍后')
             while path_or_cntr:
                 path_or_cntr, msg = await logbtn(conv, SENDER, path_or_cntr,
@@ -359,18 +388,18 @@ async def mysnode(event):
     '''定义supernode文件命令'''
     nodereg = re.compile(r'^/snode ([\S]+)')
     text = re.findall(nodereg, event.raw_text)
-    if len(text) == 0:
-        res = '''请正确使用/snode命令，如
-        /snode jd1 获取容器jd1的脚本
-        '''
-        await client.send_message(chat_id, res)
-    elif text[0] not in containers:
-        res = f"容器{rext[0]}不在配置文件中！"
-        await client.send_message(chat_id, res)
-    else:
-        cntr_id = text[0]
-        SENDER = event.sender_id
-        async with client.conversation(SENDER, timeout=60) as conv:
+    SENDER = event.sender_id
+    async with client.conversation(SENDER, timeout=60) as conv:
+        if len(text) == 0:
+            msg = await conv.send_message('正在查询，请稍后')
+            cntr_id, msg = await cntrtn(conv, SENDER, "选择容器", msg)
+            path, msg = await nodebtn(conv, SENDER, cntr_id, msg)
+
+        elif text[0] not in containers:
+            res = f"容器{rext[0]}不在配置文件中！"
+            await client.send_message(chat_id, res)
+        else:
+            cntr_id = text[0]
             msg = await conv.send_message('正在查询，请稍后')
             path, msg = await nodebtn(conv, SENDER, cntr_id, msg)
 
