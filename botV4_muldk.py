@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import time
-from asyncio import exceptions
+from asyncio import create_task, exceptions
 
 import qrcode
 import requests
@@ -290,10 +290,11 @@ async def logbtn(conv, SENDER, cntr_id: str, content: str, msg):
             path = cntr_id
         dpath = os.listdir(path)
         dpath.sort(reverse=True)
-        dpath = dpath[:80]
+        if dpath[0].endswith(".log"):
+            dpath = dpath[:18]
         markup = [
             Button.inline(fname, data=os.path.join(path, fname))
-            for fname in dpath
+            for fname in dpath if not fname.startswith(".")
         ]
         markup.append(Button.inline('取消', data='cancle'))
         markup = split_list(markup, 3)
@@ -418,48 +419,6 @@ async def backfile(file):
             os.rename(file, file + '.bak')
 
 
-@client.on(events.NewMessage(from_users=chat_id))
-async def myfile(event):
-    '''定义文件操作'''
-    try:
-        SENDER = event.sender_id
-        if event.message.file:
-            markup = []
-            filename = event.message.file.name
-            async with client.conversation(SENDER, timeout=30) as conv:
-                msg = await conv.send_message('请选择您要放入的文件夹或操作：\n')
-                markup.append(Button.inline('放入config', data=_ConfigDir))
-                markup.append(Button.inline('放入scripts', data=_ScriptsDir))
-                markup.append(Button.inline('放入own', data=_OwnDir))
-                markup.append(Button.inline('放入own并运行', data='node'))
-                msg = await client.edit_message(msg,
-                                                '请做出你的选择：',
-                                                buttons=markup)
-                date = await conv.wait_event(press_event(SENDER))
-                res = bytes.decode(date.data)
-                if res == 'node':
-                    await backfile(_OwnDir + '/' + filename)
-                    await client.download_media(event.message, _OwnDir)
-                    os.popen('nohup jtask {}/{} now >/jd/log/bot.log &'.format(
-                        _OwnDir, filename))
-                    await client.edit_message(
-                        msg, '脚本已保存到own文件夹，并成功在后台运行，请稍后自行查看日志')
-                    conv.cancel()
-                else:
-                    await backfile(res + '/' + filename)
-                    await client.download_media(event.message, res)
-                    await client.edit_message(msg,
-                                              filename + '已保存到' + res + '文件夹')
-            if filename == 'crontab.list':
-                os.popen('crontab ' + res + '/' + filename)
-                await client.edit_message(msg, '定时文件已保存，并更新')
-                conv.cancel()
-    except Exception as e:
-        await client.send_message(chat_id,
-                                  'something wrong,I\'m sorry\n' + str(e))
-        logger.error('something wrong,I\'m sorry\n' + str(e))
-
-
 @client.on(events.NewMessage(from_users=chat_id, pattern='/node'))
 async def mynode(event):
     '''接收/node命令后执行程序'''
@@ -500,6 +459,46 @@ async def mycmd(event):
         await client.send_message(chat_id, '未开启CMD命令，如需使用请修改配置文件')
 
 
+async def scmdbtn(conv, SENDER, msg):
+    '''定义scmd脚本按钮'''
+    try:
+        markup = [
+            Button.inline(act, data=cmd)
+            for act, cmd in config["cmds"].items()
+        ]
+        markup.append(Button.inline('取消', data='cancel'))
+        markup = split_list(markup, 3)
+        msg = await client.edit_message(msg, '请做出你的选择：', buttons=markup)
+        date = await conv.wait_event(press_event(SENDER))
+        res = bytes.decode(date.data)
+        if res == 'cancel':
+            msg = await client.edit_message(msg, '对话已取消')
+            conv.cancel()
+            return None, None
+        else:
+            task = create_task(cmd(res))
+            await task
+            conv.cancel()
+            return None, None
+    except exceptions.TimeoutError:
+        msg = await client.edit_message(msg, '选择已超时，对话已停止')
+        return None, None
+    except Exception as e:
+        msg = await client.edit_message(
+            msg, 'something wrong,I\'m sorry\n' + str(e))
+        logger.error('something wrong,I\'m sorry\n' + str(e))
+        return None, None
+
+
+@client.on(events.NewMessage(from_users=chat_id, pattern='/scmd'))
+async def myscmd(event):
+    '''接收/scmd命令后执行程序'''
+    SENDER = event.sender_id
+    async with client.conversation(SENDER, timeout=60) as conv:
+        msg = await conv.send_message('正在查询，请稍后')
+        await scmdbtn(conv, SENDER, msg)
+
+
 async def cmd(cmdtext):
     '''定义执行cmd命令'''
     try:
@@ -525,7 +524,8 @@ async def cmd(cmdtext):
 async def mycookie(event):
     '''接收/getcookie后执行程序'''
     try:
-        await get_jd_cookie()
+        task = create_task(get_jd_cookie())
+        await task
     except Exception as e:
         await client.send_message(chat_id,
                                   'something wrong,I\'m sorry\n' + str(e))
@@ -540,9 +540,9 @@ async def mystart(event):
     /start 开始使用本程序
     /node 执行js脚本文件，目前仅支持/scirpts、/config目录下js，直接输入/node jd_bean_change 即可进行执行。该命令会等待脚本执行完，期间不能使用机器人，建议使用snode命令。
     /cmd 执行cmd命令,例如/cmd python3 /python/bot.py 则将执行python目录下的bot.py
+    /scmd 执行自定义命令
     /snode 命令可以选择脚本执行，只能选择/jd/scripts目录下的脚本，选择完后直接后台运行，不影响机器人响应其他命令
     /log 选择查看执行日志
-    /getfile 获取jd目录下文件
     /getcookie 扫码获取cookie 期间不能进行其他交互
     此外直接发送文件，会让你选择保存到哪个文件夹，如果选择运行，将保存至scripts目录下，并立即运行脚本
     crontab.list文件会自动更新时间;其他文件会被保存到/jd/scripts文件夹下'''
