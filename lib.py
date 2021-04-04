@@ -29,7 +29,7 @@ def get_data(path):
 
 
 def show_data(dbase):
-    text = "各个帐号一周内的京豆变化：\n"
+    text = "各个帐号一周内每天新增京豆：\n"
     for idn, datas in dbase.items():
         text += idn[:-3] + "**\n"
         ldatas = list(datas.items())
