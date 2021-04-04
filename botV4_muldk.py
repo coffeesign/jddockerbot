@@ -289,7 +289,8 @@ async def logbtn(conv, SENDER, cntr_id: str, content: str, msg):
         else:
             path = cntr_id
         dpath = os.listdir(path)
-        dpath.sort()
+        dpath.sort(reverse=True)
+        dpath = dpath[:80]
         markup = [
             Button.inline(fname, data=os.path.join(path, fname))
             for fname in dpath
@@ -304,10 +305,14 @@ async def logbtn(conv, SENDER, cntr_id: str, content: str, msg):
             conv.cancel()
             return None, None
         elif os.path.isfile(res):
+            text = ""
             msg = await client.edit_message(msg, content + '中，请注意查收')
             with open(res, "r") as f:
-                await conv.send_message(f.read())
-            #await conv.send_file(res)
+                text = f.read()
+            #  if len(text) <= 4000:
+            #  await conv.send_message(text)
+            #  else:
+            await conv.send_file(text.encode("GBK", "ignore"))
             msg = await client.edit_message(msg, content + res + '成功，请查收')
             conv.cancel()
             return None, None
