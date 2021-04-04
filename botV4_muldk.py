@@ -306,17 +306,8 @@ async def logbtn(conv, SENDER, cntr_id: str, content: str, msg):
             conv.cancel()
             return None, None
         elif os.path.isfile(res):
-            text = ""
             msg = await client.edit_message(msg, content + '中，请注意查收')
-            with open(res, "r") as f:
-                text = f.read()
-            tname = os.path.join("/tmp", os.path.basename(res))
-            with open(tname, "wb") as f:
-                f.write(text.encode("GBK", "ignore"))
-            await conv.send_file(tname)
-            #  if len(text) <= 4000:
-            #  await conv.send_message(text)
-            #  else:
+            await conv.send_file(res)
             msg = await client.edit_message(msg, content + res + '成功，请查收')
             conv.cancel()
             return None, None
