@@ -154,52 +154,6 @@ def parsePostRespCookie(headers, data):
     logger.info("okl_token:" + okl_token)
 
 
-def chekLogin():
-    expired_time = time.time() + 60 * 3
-    while True:
-        check_time_stamp = int(time.time() * 1000)
-        check_url = 'https://plogin.m.jd.com/cgi-bin/m/tmauthchecktoken?&token=%s&ou_state=0&okl_token=%s' % (
-            token, okl_token)
-        check_data = {
-            'lang':
-            'chs',
-            'appid':
-            300,
-            'returnurl':
-            'https://wqlogin2.jd.com/passport/LoginRedirect?state=%s&returnurl=//home.m.jd.com/myJd/newhome.action?sceneval=2&ufc=&/myJd/home.action'
-            % check_time_stamp,
-            'source':
-            'wq_passport'
-        }
-        check_header = {
-            'Referer':
-            f'https://plogin.m.jd.com/login/login?appid=300&returnurl=https://wqlogin2.jd.com/passport/LoginRedirect?state=%s&returnurl=//home.m.jd.com/myJd/newhome.action?sceneval=2&ufc=&/myJd/home.action&source=wq_passport'
-            % check_time_stamp,
-            'Cookie':
-            cookies,
-            'Connection':
-            'Keep-Alive',
-            'Content-Type':
-            'application/x-www-form-urlencoded; Charset=UTF-8',
-            'Accept':
-            'application/json, text/plain, */*',
-            'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36',
-        }
-        resp = requests.post(url=check_url,
-                             headers=check_header,
-                             data=check_data,
-                             timeout=30)
-        data = resp.json()
-        if data.get("errcode") == 0:
-            parseJDCookies(resp.headers)
-            return data.get("errcode")
-        if data.get("errcode") == 21:
-            return data.get("errcode")
-        if time.time() > expired_time:
-            return "超过3分钟未扫码，二维码已过期。"
-
-
 def parseJDCookies(headers):
     global jd_cookie
     logger.info("扫码登录成功，下面为获取到的用户Cookie。")
@@ -225,21 +179,6 @@ def creatqr(text):
     img = qr.make_image()
     # 保存二维码
     img.save(img_file)
-
-
-async def get_jd_cookie():
-    getSToken()
-    getOKLToken()
-    url = 'https://plogin.m.jd.com/cgi-bin/m/tmauth?appid=300&client_type=m&token=' + token
-    creatqr(url)
-    msg = await client.send_message(chat_id, '请扫码', file=img_file)
-    return_msg = chekLogin()
-    if return_msg == 0:
-        await client.edit_message(msg, 'cookie获取成功:\n' + jd_cookie)
-    elif return_msg == 21:
-        await client.edit_message(msg, '二维码已失效，请重新获取')
-    else:
-        await client.edit_message(msg, 'something wrong')
 
 
 def split_list(datas, n, row: bool = True):
@@ -500,7 +439,9 @@ async def setCookiebtn(conv, SENDER, cks, msg):
         markup = [Button.inline(cntr, data=cntr) for cntr in containers]
         markup.append(Button.inline('取消', data='cancel'))
         markup = split_list(markup, 3)
-        msg = await client.edit_message(msg, '请选择容器：', buttons=markup)
+        msg = await client.edit_message(msg,
+                                        '请选择需要修改cookie的容器：',
+                                        buttons=markup)
         date = await conv.wait_event(press_event(SENDER))
         res = bytes.decode(date.data)
         if res == 'cancel':
@@ -616,9 +557,91 @@ async def cmd(cmdtext):
 @client.on(events.NewMessage(from_users=chat_id, pattern=r'^/getcookie'))
 async def mycookie(event):
     '''接收/getcookie后执行程序'''
+    login = True
+    msg = await client.send_message(chat_id, '正在获取二维码，请稍后')
+    global cookiemsg
     try:
-        task = create_task(get_jd_cookie())
-        await task
+        SENDER = event.sender_id
+        async with client.conversation(SENDER, timeout=30) as conv:
+            getSToken()
+            getOKLToken()
+            url = 'https://plogin.m.jd.com/cgi-bin/m/tmauth?appid=300&client_type=m&token=' + token
+            creatqr(url)
+            markup = [
+                Button.inline("已扫码", data='confirm'),
+                Button.inline("取消", data='cancel')
+            ]
+            await client.delete_messages(chat_id, msg)
+            cookiemsg = await client.send_message(
+                chat_id,
+                '30s内点击取消将取消本次操作\n如不取消，扫码结果将于30s后显示\n扫码后不想等待点击已扫码',
+                file=img_file,
+                buttons=markup)
+            convdata = await conv.wait_event(press_event(SENDER))
+            res = bytes.decode(convdata.data)
+            if res == 'cancel':
+                login = False
+                await client.delete_messages(chat_id, cookiemsg)
+                msg = await conv.send_message('对话已取消')
+                conv.cancel()
+            else:
+                conv.cancel()
+                raise exceptions.TimeoutError()
+    except exceptions.TimeoutError:
+        expired_time = time.time() + 60 * 2
+        while login:
+            check_time_stamp = int(time.time() * 1000)
+            check_url = 'https://plogin.m.jd.com/cgi-bin/m/tmauthchecktoken?&token=%s&ou_state=0&okl_token=%s' % (
+                token, okl_token)
+            check_data = {
+                'lang':
+                'chs',
+                'appid':
+                300,
+                'returnurl':
+                'https://wqlogin2.jd.com/passport/LoginRedirect?state=%s&returnurl=//home.m.jd.com/myJd/newhome.action?sceneval=2&ufc=&/myJd/home.action'
+                % check_time_stamp,
+                'source':
+                'wq_passport'
+            }
+            check_header = {
+                'Referer':
+                f'https://plogin.m.jd.com/login/login?appid=300&returnurl=https://wqlogin2.jd.com/passport/LoginRedirect?state=%s&returnurl=//home.m.jd.com/myJd/newhome.action?sceneval=2&ufc=&/myJd/home.action&source=wq_passport'
+                % check_time_stamp,
+                'Cookie':
+                cookies,
+                'Connection':
+                'Keep-Alive',
+                'Content-Type':
+                'application/x-www-form-urlencoded; Charset=UTF-8',
+                'Accept':
+                'application/json, text/plain, */*',
+                'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36',
+            }
+            resp = requests.post(url=check_url,
+                                 headers=check_header,
+                                 data=check_data,
+                                 timeout=30)
+            data = resp.json()
+            if data.get("errcode") == 0:
+                parseJDCookies(resp.headers)
+                await client.delete_messages(chat_id, cookiemsg)
+                await client.send_message(chat_id, '以下为获取到的cookie')
+                await client.send_message(chat_id, jd_cookie)
+                async with client.conversation(SENDER, timeout=60) as conv:
+                    msg = await conv.send_message('正在查询，请稍后')
+                    await setCookiebtn(conv, SENDER, jd_cookie, msg)
+                return
+            if data.get("errcode") == 21:
+                await client.delete_messages(chat_id, cookiemsg)
+                await client.send_message(chat_id,
+                                          '发生了某些错误\n' + data.get("errcode"))
+                return
+            if time.time() > expired_time:
+                await client.delete_messages(chat_id, cookiemsg)
+                await client.send_message(chat_id, '超过3分钟未扫码，二维码已过期')
+                return
     except Exception as e:
         await client.send_message(chat_id,
                                   'something wrong,I\'m sorry\n' + str(e))
@@ -638,9 +661,8 @@ async def mystart(event):
     /log 选择查看执行日志
     /bean 获取指定容器内各个帐号一周内每天新增京东
     /getcookie 扫码获取cookie 期间不能进行其他交互
-    /scookie cookie字符串 功能：设置cookie
-    此外直接发送文件，会让你选择保存到哪个文件夹，如果选择运行，将保存至scripts目录下，并立即运行脚本
-    crontab.list文件会自动更新时间;其他文件会被保存到/jd/scripts文件夹下'''
+    /scookie cookie字符串 功能：设置cookie'''
+
     await client.send_message(chat_id, msg)
 
 
