@@ -1,6 +1,6 @@
 # 去my.telegram.org获取api_id api_hash千万不要点错成delete账户！！！！
 #### 这个是多docker版，配置好直接在宿主机运行 
-#### 修改自:https://github.com/SuMaiKaDe/jddockerbot/tree/master，一个docker建议用回原版
+#### 修改自:https://github.com/SuMaiKaDe/jddockerbot/tree/master ，一个docker建议用回原版
 #### 自己添加了许多功能，自用为主
 ***
 - 使用方法：
