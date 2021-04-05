@@ -493,6 +493,66 @@ async def myscmd(event):
         await scmdbtn(conv, SENDER, msg)
 
 
+async def setCookiebtn(conv, SENDER, cks, msg):
+    '''定义setCookie脚本按钮'''
+    from lib import get_cookies, set_cookies
+    try:
+        markup = [Button.inline(cntr, data=cntr) for cntr in containers]
+        markup.append(Button.inline('取消', data='cancel'))
+        markup = split_list(markup, 3)
+        msg = await client.edit_message(msg, '请选择容器：', buttons=markup)
+        date = await conv.wait_event(press_event(SENDER))
+        res = bytes.decode(date.data)
+        if res == 'cancel':
+            msg = await client.edit_message(msg, '对话已取消')
+            conv.cancel()
+            return None, None
+        else:
+            cntr_path = containers[res]
+            ckl = get_cookies(cntr_path)
+            markup = [Button.inline(ckn, data=ckn) for ckn in ckl]
+            markup.append(Button.inline('取消', data='cancel'))
+            markup = split_list(markup, 3)
+            msg = await client.edit_message(msg, '请选择要设置的ck：', buttons=markup)
+            date = await conv.wait_event(press_event(SENDER))
+            res = bytes.decode(date.data)
+            if res == 'cancel':
+                msg = await client.edit_message(msg, '对话已取消')
+                conv.cancel()
+                return None, None
+            else:
+                msg = await client.edit_message(msg, '正在设置ck')
+                if (set_cookies(cntr_path, ckl, res, cks)):
+                    msg = await client.edit_message(msg, 'ck设置成功！')
+                else:
+                    msg = await client.edit_message(msg, 'ck设置失败！')
+    except exceptions.TimeoutError:
+        msg = await client.edit_message(msg, '选择已超时，对话已停止')
+        return None, None
+    except Exception as e:
+        msg = await client.edit_message(
+            msg, 'something wrong,I\'m sorry\n' + str(e))
+        logger.error('something wrong,I\'m sorry\n' + str(e))
+        return None, None
+
+
+@client.on(events.NewMessage(from_users=chat_id, pattern='/scookie'))
+async def mysetCookie(event):
+    '''接收/scmd命令后执行程序'''
+    SENDER = event.sender_id
+    cks = event.raw_text.split(maxsplit=1)
+    if len(cks) <= 1:
+        msg = '''请正确使用/scookie命令，如
+        /cmd cookies字符串  
+        '''
+        await client.send_message(chat_id, msg)
+    else:
+        cks = cks[1]
+        async with client.conversation(SENDER, timeout=60) as conv:
+            msg = await conv.send_message('正在查询，请稍后')
+            await setCookiebtn(conv, SENDER, cks, msg)
+
+
 async def beanbtn(conv, SENDER, msg):
     '''定义bean脚本按钮'''
     from lib import get_data, show_data
@@ -578,6 +638,7 @@ async def mystart(event):
     /log 选择查看执行日志
     /bean 获取指定容器内各个帐号一周内每天新增京东
     /getcookie 扫码获取cookie 期间不能进行其他交互
+    /scookie cookie字符串 功能：设置cookie
     此外直接发送文件，会让你选择保存到哪个文件夹，如果选择运行，将保存至scripts目录下，并立即运行脚本
     crontab.list文件会自动更新时间;其他文件会被保存到/jd/scripts文件夹下'''
     await client.send_message(chat_id, msg)

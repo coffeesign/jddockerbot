@@ -6,6 +6,41 @@ import re
 
 reg = r"^(账号\d+：\S+)\n昨日收入：(\d+)京豆"
 
+reg_find = r"^(Cookie\d+)\=[\'\"](\S*?)[\'\"]$"
+reg_sub = r"(?:Cookie\d.+?[\'\"]\n)+"
+reg_ck = r"pt_key\=\S+?;pt_pin\=\S+?;"
+
+
+def get_cookies(cntr_path):
+    path = os.path.join(cntr_path, "config/config.sh")
+    text = ""
+    with open(path, "r") as f:
+        text = f.read()
+    cks = re.findall(reg_find, text, re.M)
+    return dict(cks)
+
+
+#ckl要用的ck列表，ckn设置的ck名，cks要设置的ck值
+def set_cookies(cntr_path, ckl, ckn, cks):
+    temp = "{}=\"{}\"\n"
+    text = ""
+    repl = ""
+    path = os.path.join(cntr_path, "config/config.sh")
+    cks = cks.replace(" ", "")
+    ckm = re.search(reg_ck, cks)
+    if not ckm:
+        return False
+    cks = ckm[0]
+    ckl[ckn] = cks
+    for k, n in ckl.items():
+        repl += temp.format(k, n)
+    with open(path, "r") as f:
+        text = f.read()
+    text = re.sub(reg_sub, repl, text, re.M)
+    with open(path, "w") as f:
+        f.write(text)
+    return True
+
 
 def get_data(path):
     dbase = {}
@@ -31,7 +66,9 @@ def get_data(path):
 def show_data(dbase):
     text = "各个帐号一周内每天新增京豆：\n"
     for idn, datas in dbase.items():
-        text += idn[:-3] + "**\n"
+        if len(idn) > 8:
+            idn = idn[:8] + "***"
+        text += idn + "\n"
         ldatas = list(datas.items())
         if len(ldatas) > 7:
             ldatas = ldatas[len(ldatas) - 8:]
@@ -42,7 +79,8 @@ def show_data(dbase):
 
 
 if __name__ == '__main__':
-    path = "/storage/jd2/"
-    dbase = get_data(path)
-    text = show_data(dbase)
-    print(text)
+    path = "/storage/jd3/"
+    ckn = "Cookie1"
+    cks = "sdfdsfsa;pt_key=xxxxxxxxxxsdfswer;  pt_pin=xxsdfsfaxx;  sdfsdaewr"
+    ckl = get_cookies(path)
+    set_cookies(path, ckl, ckn, cks)
