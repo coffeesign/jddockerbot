@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from asyncio import create_task, exceptions
 
@@ -386,8 +387,10 @@ async def mycmd(event):
             '''
             await client.send_message(chat_id, msg)
         else:
-            print(text)
-            await cmd(text[0].replace('/cmd ', ''))
+            SENDER = event.sender_id
+            async with client.conversation(SENDER, timeout=60) as conv:
+                msg = await conv.send_message('正在查询，请稍后')
+                await cmd(text[0].replace('/cmd ', ''), msg)
     else:
         await client.send_message(chat_id, '未开启CMD命令，如需使用请修改配置文件')
 
@@ -395,6 +398,9 @@ async def mycmd(event):
 async def scmdbtn(conv, SENDER, msg):
     '''定义scmd脚本按钮'''
     try:
+        from importlib import reload
+        reload(sys.modules["config.config_muldk"])
+        from config.config_muldk import config
         markup = [
             Button.inline(act, data=cmd)
             for act, cmd in config["cmds"].items()
@@ -409,8 +415,7 @@ async def scmdbtn(conv, SENDER, msg):
             conv.cancel()
             return None, None
         else:
-            task = create_task(cmd(res))
-            await task
+            msg = await cmd(res, msg)
             conv.cancel()
             return None, None
     except exceptions.TimeoutError:
@@ -533,21 +538,22 @@ async def mybean(event):
         await beanbtn(conv, SENDER, msg)
 
 
-async def cmd(cmdtext):
+async def cmd(cmdtext, msg):
     '''定义执行cmd命令'''
     try:
-        await client.send_message(chat_id, '开始执行程序，如程序复杂，建议稍等')
-        res = os.popen(cmdtext).read()
+        msg = await client.edit_message(msg, '开始执行程序，如程序复杂，建议稍等')
+        res = os.popen(cmdtext + " 2>&1").read()
         if len(res) == 0:
-            await client.send_message(chat_id, '已执行，但返回值为空')
+            msg = await client.edit_message(msg, '已执行，但返回值为空')
         elif len(res) <= 4000:
-            await client.send_message(chat_id, res)
+            msg = await client.edit_message(msg, res)
         else:
             with open(_LogDir + '/botres.log', 'w+') as f:
                 f.write(res)
-            await client.send_message(chat_id,
-                                      '执行结果较长，请查看日志',
-                                      file=_LogDir + '/botres.log')
+            msg = await client.edit_message(msg,
+                                            '执行结果较长，请查看日志',
+                                            file=_LogDir + '/botres.log')
+        return msg
     except Exception as e:
         await client.send_message(chat_id,
                                   'something wrong,I\'m sorry\n' + str(e))
@@ -659,7 +665,7 @@ async def mystart(event):
     /scmd 执行自定义命令
     /snode 命令可以选择脚本执行，只能选择/jd/scripts目录下的脚本，选择完后直接后台运行，不影响机器人响应其他命令
     /log 选择查看执行日志
-    /bean 获取指定容器内各个帐号一周内每天新增京东
+    /bean 获取指定容器内各个帐号一周内每天新增京豆
     /getcookie 扫码获取cookie 期间不能进行其他交互
     /scookie cookie字符串 功能：设置cookie'''
 
