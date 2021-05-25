@@ -6,7 +6,7 @@
 - 使用方法：
     - git clone https://github.com/coffeesign/jddockerbot
     - cd jddockerbot  
-    - pip install -r requirements.txt
+    - pip3 install -r requirements.txt
     - 配置config下的配置文件config_muldk.py，按照提示配置就行了
     - python3 botV4_muldk.py运行bot
     - 如果需要更换机器人token，需要将bot.session删除后，重新运行
